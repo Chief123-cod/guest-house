@@ -5,6 +5,7 @@ import { db, auth } from "./data/firebase";
 import GuestPage from "./pages/GuestPage";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
+import "./index.css";
 
 export default function App() {
   const [guests, setGuests] = useState([]);
