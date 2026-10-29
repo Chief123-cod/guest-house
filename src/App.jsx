@@ -117,20 +117,17 @@ export default function App() {
   }
 
   // Tampilan Halaman Tamu
+  // Tampilan Halaman Tamu (Tanpa teks masuk admin di footer)
   return (
-    <div className="relative min-h-screen flex flex-col justify-between bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100">
-      <GuestPage guestData={currentGuest} isFound={Boolean(currentGuest)} />
+    <div className="min-h-screen flex flex-col justify-between bg-slate-50">
+      <GuestPage
+        guestData={currentGuest}
+        isFound={Boolean(currentGuest)}
+        eventTime={eventTime}
+      />
 
-      <footer className="text-center py-4 text-xs text-gray-400">
-        <button
-          onClick={() => {
-            setViewMode("login");
-            window.history.pushState({}, "", "/login");
-          }}
-          className="hover:text-gray-600 transition-colors py-2 px-4"
-        >
-          • Masuk Admin •
-        </button>
+      <footer className="text-center py-6 text-xs text-slate-400">
+        <p>© Open House Kamar 201</p>
       </footer>
     </div>
   );
