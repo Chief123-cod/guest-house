@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "./data/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { db, auth } from "./data/firebase";
 import GuestPage from "./pages/GuestPage";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
-import "./index.css";
 
 export default function App() {
   const [guests, setGuests] = useState([]);
@@ -12,33 +12,59 @@ export default function App() {
   const [viewMode, setViewMode] = useState("guest");
   const [loading, setLoading] = useState(true);
 
-  // 1. Ambil data tamu dari Firestore secara Real-Time
+  // 1. Pantau status Auth Firebase secara real-time (mencegah logout saat refresh)
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "guests"), (snapshot) => {
-      const guestList = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setGuests(guestList);
-      setLoading(false);
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsAdminLoggedIn(true);
+        const path = window.location.pathname;
+        if (path.includes("/login") || path.includes("/admin")) {
+          setViewMode("admin");
+        }
+      } else {
+        setIsAdminLoggedIn(false);
+      }
     });
 
-    return () => unsubscribe();
+    // 2. Ambil data tamu dari Firestore
+    const unsubscribeGuests = onSnapshot(
+      collection(db, "guests"),
+      (snapshot) => {
+        const guestList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setGuests(guestList);
+        setLoading(false);
+      },
+    );
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeGuests();
+    };
   }, []);
 
-  // 2. Cek Path URL
+  // Cek Path URL saat pertama buka
   useEffect(() => {
     const path = window.location.pathname;
-    if (path.includes("/login") || path.includes("/admin")) {
+    if (path.includes("/login")) {
       setViewMode("login");
     }
   }, []);
 
-  // 3. Baca Parameter URL WhatsApp (?guest=Nathan)
+  // Handle Logout
+  const handleLogout = async () => {
+    await signOut(auth);
+    setIsAdminLoggedIn(false);
+    setViewMode("guest");
+    window.history.pushState({}, "", "/");
+  };
+
+  // Baca Parameter URL WhatsApp (?guest=Nathan)
   const queryParams = new URLSearchParams(window.location.search);
   const guestParam = queryParams.get("guest") || queryParams.get("id");
 
-  // Cari Tamu
   const currentGuest = guests.find(
     (g) =>
       g.name?.toLowerCase() === guestParam?.toLowerCase() ||
@@ -48,26 +74,22 @@ export default function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-amber-50 flex justify-center items-center">
-        <p className="text-amber-800 font-bold text-sm">
-          Memuat Undangan... 🍪
+        <p className="text-amber-800 font-bold text-sm animate-pulse">
+          Memuat Undangan Kamar 201... 🍪
         </p>
       </div>
     );
   }
 
-  // Tampilan Admin Dashboard
+  // Tampilan Dashboard Admin
   if (viewMode === "admin" && isAdminLoggedIn) {
     return (
       <div>
-        <div className="bg-gray-900 text-white px-6 py-2 flex justify-between items-center text-xs font-medium">
-          <span>👑 Sesi Admin Aktif (Kamar 201)</span>
+        <div className="bg-gray-900 text-white px-4 py-2.5 flex justify-between items-center text-xs font-medium shadow-md">
+          <span className="truncate pr-2">👑 Sesi Admin Aktif (Kamar 201)</span>
           <button
-            onClick={() => {
-              setIsAdminLoggedIn(false);
-              setViewMode("guest");
-              window.history.pushState({}, "", "/");
-            }}
-            className="bg-rose-600 px-3 py-1 rounded-md font-semibold hover:bg-rose-700 transition-all"
+            onClick={handleLogout}
+            className="bg-rose-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-rose-700 transition-all shrink-0"
           >
             Logout
           </button>
@@ -104,7 +126,7 @@ export default function App() {
             setViewMode("login");
             window.history.pushState({}, "", "/login");
           }}
-          className="hover:text-gray-600 transition-colors"
+          className="hover:text-gray-600 transition-colors py-2 px-4"
         >
           • Masuk Admin •
         </button>
