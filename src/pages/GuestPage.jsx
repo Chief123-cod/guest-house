@@ -2,7 +2,7 @@ import React from "react";
 import RoomInfo from "../components/RoomInfo";
 import RsvpForm from "../components/RsvpForm";
 
-export default function GuestPage({ guestData, isFound }) {
+export default function GuestPage({ guestData, isFound, eventTime }) {
   // KONDISI 2: Jika tamu tidak terdaftar atau sudah dihapus oleh admin
   if (!isFound) {
     return (
@@ -52,7 +52,7 @@ export default function GuestPage({ guestData, isFound }) {
         <hr className="border-slate-100" />
 
         {/* Info Detail Lokasi Kamar 201 */}
-        <RoomInfo />
+        <RoomInfo eventTime={eventTime} />
 
         {/* Form RSVP */}
         <RsvpForm guest={guestData} />

@@ -13,7 +13,10 @@ export default function App() {
   const [viewMode, setViewMode] = useState("guest");
   const [loading, setLoading] = useState(true);
 
-  // 1. Pantau status Auth Firebase secara real-time (mencegah logout saat refresh)
+  // TAMBAHKAN STATE INI (agar eventTime tidak error)
+  const [eventTime, setEventTime] = useState("");
+
+  // 1. Pantau status Auth Firebase secara real-time
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -62,21 +65,26 @@ export default function App() {
     window.history.pushState({}, "", "/");
   };
 
-  // Baca Parameter URL WhatsApp (?guest=Nathan)
+  // Baca Parameter URL WhatsApp
   const queryParams = new URLSearchParams(window.location.search);
-  const guestParam = queryParams.get("guest") || queryParams.get("id");
+  const rawGuestParam = queryParams.get("guest") || queryParams.get("id");
+  const guestParam = rawGuestParam
+    ? decodeURIComponent(rawGuestParam).trim().toLowerCase()
+    : "";
 
   const currentGuest = guests.find(
     (g) =>
-      g.name?.toLowerCase() === guestParam?.toLowerCase() ||
-      g.id === guestParam,
+      g.name?.trim().toLowerCase() === guestParam || g.id === rawGuestParam,
   );
+
+  // Status validitas tamu (Pastikan parameter ada dan tamu benar-benar terdaftar)
+  const isGuestFound = Boolean(guestParam && currentGuest);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-amber-50 flex justify-center items-center">
-        <p className="text-amber-800 font-bold text-sm animate-pulse">
-          Memuat Undangan Kamar 201... 🍪
+      <div className="min-h-screen bg-slate-50 flex justify-center items-center">
+        <p className="text-slate-600 font-medium text-sm animate-pulse">
+          Memuat Undangan Kamar 201...
         </p>
       </div>
     );
@@ -95,7 +103,11 @@ export default function App() {
             Logout
           </button>
         </div>
-        <AdminDashboard guests={guests} />
+        <AdminDashboard
+          guests={guests}
+          eventTime={eventTime}
+          setEventTime={setEventTime}
+        />
       </div>
     );
   }
@@ -117,12 +129,11 @@ export default function App() {
   }
 
   // Tampilan Halaman Tamu
-  // Tampilan Halaman Tamu (Tanpa teks masuk admin di footer)
   return (
     <div className="min-h-screen flex flex-col justify-between bg-slate-50">
       <GuestPage
         guestData={currentGuest}
-        isFound={Boolean(currentGuest)}
+        isFound={isGuestFound}
         eventTime={eventTime}
       />
 
