@@ -30,10 +30,20 @@ export default function RsvpForm({ guest }) {
   return (
     <div className="space-y-4">
       {isSubmitted ? (
-        <div className="bg-slate-50 border border-slate-200/80 p-5 rounded-2xl text-center space-y-3">
-          <div className="space-y-1">
+        <div className="bg-slate-50 border border-slate-200/80 p-5 rounded-2xl relative space-y-3">
+          {/* Tombol X untuk mereset / mengubah konfirmasi */}
+          <button
+            type="button"
+            onClick={() => setIsSubmitted(false)}
+            className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 font-bold text-sm w-6 h-6 flex items-center justify-center rounded-full bg-slate-200/50 transition-colors"
+            title="Ubah Konfirmasi"
+          >
+            ✕
+          </button>
+
+          <div className="space-y-1 pr-6">
             <p className="text-sm font-bold text-slate-800">
-              Konfirmasi telah disimpan
+              Konfirmasi telah tersimpan
             </p>
             <p className="text-xs text-slate-500">
               {attending
@@ -41,13 +51,6 @@ export default function RsvpForm({ guest }) {
                 : "Mengonfirmasikan berhalangan hadir"}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsSubmitted(false)}
-            className="text-xs text-amber-600 hover:text-amber-700 font-medium underline transition-colors"
-          >
-            Ubah jawaban
-          </button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -114,7 +117,7 @@ export default function RsvpForm({ guest }) {
           <button
             type="submit"
             disabled={attending === null || loading}
-            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium py-3 rounded-xl text-xs sm:text-sm disabled:opacity-40 transition-all shadow-sm"
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 rounded-xl text-xs sm:text-sm disabled:opacity-40 transition-all shadow-sm"
           >
             {loading ? "Menyimpan..." : "Kirim Konfirmasi"}
           </button>
