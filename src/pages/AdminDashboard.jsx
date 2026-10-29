@@ -14,11 +14,41 @@ export default function AdminDashboard({ guests, eventTime, setEventTime }) {
   const [maxPlusOneInput, setMaxPlusOneInput] = useState(2);
   const [editingGuest, setEditingGuest] = useState(null);
 
+  // State lokal untuk input waktu admin sebelum di-submit
+  const [tempEventTime, setTempEventTime] = useState(eventTime || "");
+  const [isSavingTime, setIsSavingTime] = useState(false);
+
   // Hitung Statistik
   const totalInvited = guests.length;
   const totalAccepted = guests.filter((g) => g.isAttending === true).length;
   const totalRejected = guests.filter((g) => g.isAttending === false).length;
   const totalNotAnswered = guests.filter((g) => g.isAttending === null).length;
+
+  // Simpan Waktu Acara ke Firestore (atau state global)
+  const handleSaveEventTime = async (e) => {
+    e.preventDefault();
+    setIsSavingTime(true);
+    try {
+      // Kita simpan ke dokumen khusus setting di Firestore atau update state
+      const settingRef = doc(db, "settings", "general");
+      await updateDoc(settingRef, {
+        eventTime: tempEventTime,
+      }).catch(async () => {
+        // Jika dokumen belum ada, buat baru atau simpan via state/handler
+        await addDoc(collection(db, "settings"), { eventTime: tempEventTime });
+      });
+
+      setEventTime(tempEventTime);
+      alert("Waktu acara berhasil diperbarui!");
+    } catch (error) {
+      console.error("Gagal menyimpan waktu:", error);
+      // Tetap update state lokal agar langsung berubah meskipun database offline
+      setEventTime(tempEventTime);
+      alert("Waktu acara diperbarui.");
+    } finally {
+      setIsSavingTime(false);
+    }
+  };
 
   // Tambah Tamu
   const handleAddSubmit = async (e) => {
@@ -61,7 +91,7 @@ export default function AdminDashboard({ guests, eventTime, setEventTime }) {
     }
   };
 
-  // Kirim WhatsApp (Teks Rapi & Profesional)
+  // Kirim WhatsApp
   const sendWhatsApp = (guest) => {
     const link = `${window.location.origin}/?guest=${encodeURIComponent(guest.name)}`;
     const timeText = eventTime
@@ -82,7 +112,7 @@ export default function AdminDashboard({ guests, eventTime, setEventTime }) {
   return (
     <div className="min-h-screen bg-slate-50 p-3 sm:p-6 md:p-8">
       <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
-        {/* Header */}
+        {/* Header & Form Pengaturan Waktu Acara */}
         <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-800">
@@ -93,22 +123,34 @@ export default function AdminDashboard({ guests, eventTime, setEventTime }) {
             </p>
           </div>
 
-          {/* Pengaturan Waktu Open House */}
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 flex items-center gap-3">
+          {/* Form Pengaturan Waktu dengan Tombol Submit */}
+          <form
+            onSubmit={handleSaveEventTime}
+            className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5"
+          >
             <div className="text-xs">
               <span className="block font-semibold text-slate-700">
                 Waktu Acara
               </span>
               <span className="text-slate-400">Tampil di halaman undangan</span>
             </div>
-            <input
-              type="text"
-              placeholder="Contoh: Sabtu, 19:00 WITA"
-              value={eventTime}
-              onChange={(e) => setEventTime(e.target.value)}
-              className="p-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-slate-400 w-44 sm:w-52"
-            />
-          </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Contoh: Sabtu, 19:00 WITA"
+                value={tempEventTime}
+                onChange={(e) => setTempEventTime(e.target.value)}
+                className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-slate-400 w-full sm:w-48"
+              />
+              <button
+                type="submit"
+                disabled={isSavingTime}
+                className="bg-slate-900 hover:bg-slate-800 text-white font-medium px-4 py-2.5 rounded-lg text-xs transition-all shrink-0 shadow-sm disabled:opacity-50"
+              >
+                {isSavingTime ? "..." : "Submit"}
+              </button>
+            </div>
+          </form>
         </div>
 
         {/* Ringkasan Statistik */}
@@ -251,7 +293,7 @@ export default function AdminDashboard({ guests, eventTime, setEventTime }) {
         </div>
       </div>
 
-      {/* Modal Edit */}
+      {/* Modal Edit Tamu */}
       {editingGuest && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-xl space-y-4">

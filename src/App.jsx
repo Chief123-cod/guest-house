@@ -13,7 +13,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState("guest");
   const [loading, setLoading] = useState(true);
 
-  // TAMBAHKAN STATE INI (agar eventTime tidak error)
+  // State Waktu Acara
   const [eventTime, setEventTime] = useState("");
 
   // 1. Pantau status Auth Firebase secara real-time
@@ -30,7 +30,7 @@ export default function App() {
       }
     });
 
-    // 2. Ambil data tamu dari Firestore
+    // 2. Ambil data tamu dari Firestore secara real-time
     const unsubscribeGuests = onSnapshot(
       collection(db, "guests"),
       (snapshot) => {
@@ -43,9 +43,26 @@ export default function App() {
       },
     );
 
+    // 3. Ambil data setting waktu acara dari Firestore secara real-time
+    const unsubscribeSettings = onSnapshot(
+      collection(db, "settings"),
+      (snapshot) => {
+        snapshot.forEach((doc) => {
+          if (doc.data().eventTime) {
+            setEventTime(doc.data().eventTime);
+          }
+        });
+      },
+      (error) => {
+        // Fallback aman jika koleksi settings belum dibuat di Firestore
+        console.log("Settings collection belum tersedia:", error);
+      },
+    );
+
     return () => {
       unsubscribeAuth();
       unsubscribeGuests();
+      unsubscribeSettings();
     };
   }, []);
 
