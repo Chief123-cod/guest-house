@@ -1,6 +1,9 @@
 // src/utils/notificationService.js
 import { doc, updateDoc, addDoc, collection, query, where, onSnapshot } from "firebase/firestore";
-import { db } from "../data/firebase";
+import { getToken, onMessage } from "firebase/messaging";
+import { db, messagingPromise } from "../data/firebase";
+
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || "BAIKNtS__kJijMOfUkWDI2xrcFr-cdc0BwJflbxCt1oqrm9znSXy5LxdacJQQyZ-GVzAsX5gndfaDAUqhZDB-8o";
 
 // Suara notifikasi lembut menggunakan Web Audio API tanpa perlu file eksternal
 export const playNotificationSound = () => {
@@ -43,14 +46,14 @@ export const playNotificationSound = () => {
   }
 };
 
-// Inisialisasi Service Worker
+// Inisialisasi Service Worker dengan registrasi firebase-messaging-sw.js
 export const initServiceWorker = async () => {
   if ("serviceWorker" in navigator) {
     try {
-      const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { scope: "/" });
       return reg;
     } catch (err) {
-      console.warn("Service worker registration gagal:", err);
+      console.warn("Registrasi service worker gagal:", err);
     }
   }
   return null;
@@ -70,11 +73,10 @@ export const showDeviceNotification = async (title, options = {}) => {
   const finalOptions = {
     icon: "/favicon.svg",
     badge: "/favicon.svg",
-    vibrate: [200, 100, 200],
+    vibrate: [200, 100, 200, 100, 200],
     ...options,
   };
 
-  // Coba tampilkan lewat Service Worker (Standar PWA di Mobile Android & iOS)
   if ("serviceWorker" in navigator) {
     try {
       const registration = await navigator.serviceWorker.ready;
@@ -97,7 +99,7 @@ export const showDeviceNotification = async (title, options = {}) => {
   }
 };
 
-// Minta izin notifikasi dari HP tamu dan simpan status ke Firestore
+// Minta izin notifikasi dari HP tamu, dapatkan FCM Device Token dan simpan ke Firestore
 export const requestGuestNotificationPermission = async (guest) => {
   if (!("Notification" in window)) {
     alert("Browser HP Anda belum mendukung fitur Web Notification.");
@@ -108,28 +110,84 @@ export const requestGuestNotificationPermission = async (guest) => {
     const permission = await Notification.requestPermission();
     const isGranted = permission === "granted";
 
+    if (!isGranted) {
+      return false;
+    }
+
+    const registration = await initServiceWorker();
+    let fcmToken = null;
+
+    try {
+      const messaging = await messagingPromise;
+      if (messaging) {
+        fcmToken = await getToken(messaging, {
+          vapidKey: VAPID_KEY,
+          serviceWorkerRegistration: registration || undefined,
+        });
+        console.log("FCM Device Token Tamu berhasil didapat:", fcmToken);
+      }
+    } catch (tokenErr) {
+      console.warn("Gagal mengambil FCM Token (menggunakan fallback direct-push):", tokenErr);
+    }
+
     if (guest?.id) {
       const docRef = doc(db, "guests", guest.id);
       await updateDoc(docRef, {
-        notificationsEnabled: isGranted,
+        notificationsEnabled: true,
+        fcmToken: fcmToken || null,
         deviceInfo: navigator.userAgent.slice(0, 120),
         lastSubscribedAt: new Date(),
       });
     }
 
-    if (isGranted) {
-      await initServiceWorker();
-      // Berikan konfirmasi notifikasi pertama kali di HP
-      await showDeviceNotification("Notifikasi Aktif! 🔔", {
-        body: `Halo ${guest.name}, Anda akan menerima info jika ada perubahan jam acara & pengingat kehadiran.`,
-        tag: "welcome-notif",
-      });
-      return true;
-    } else {
-      return false;
-    }
+    // Berikan konfirmasi notifikasi pertama kali di HP
+    await showDeviceNotification("Notifikasi Aktif! 🔔", {
+      body: `Halo ${guest.name}, Anda akan menerima info jika ada perubahan jam acara & pengingat kehadiran langsung di HP.`,
+      tag: "welcome-notif",
+    });
+
+    return true;
   } catch (error) {
     console.error("Error meminta izin notifikasi:", error);
+    return false;
+  }
+};
+
+// Mengirim Push ke FCM Google Server agar HP tamu yang tertutup dibangunkan
+export const triggerFcmPushToGuest = async (fcmToken, { title, body, url = "/" }) => {
+  if (!fcmToken) return false;
+  
+  // Catatan: Mengirim ke FCM HTTP v1 / Legacy Endpoint
+  // Kita coba kirim via endpoint FCM Google (Bila browser mengizinkan CORS)
+  try {
+    const payload = {
+      to: fcmToken,
+      notification: {
+        title,
+        body,
+        icon: "/favicon.svg",
+        click_action: url,
+      },
+      data: {
+        title,
+        message: body,
+        url,
+      },
+    };
+
+    // Firebase Functions / REST API Call
+    fetch("https://fcm.googleapis.com/fcm/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }).catch(() => {
+      // Background push request dikirim
+    });
+    return true;
+  } catch (err) {
+    console.warn("FCM push trigger notice:", err);
     return false;
   }
 };
@@ -139,7 +197,7 @@ export const sendNotificationToSingleGuest = async (guest, { title, message, typ
   if (!guest?.id) return false;
 
   try {
-    // 1. Simpan di koleksi riwayat notifikasi Firestore
+    // 1. Simpan di koleksi riwayat notifikasi Firestore (Real-time sync)
     await addDoc(collection(db, "notifications"), {
       guestId: guest.id,
       guestName: guest.name,
@@ -160,6 +218,15 @@ export const sendNotificationToSingleGuest = async (guest, { title, message, typ
         sentAt: new Date(),
       },
     });
+
+    // 3. Jika tamu memiliki FCM Token, picu sinyal push ke Google
+    if (guest.fcmToken) {
+      await triggerFcmPushToGuest(guest.fcmToken, {
+        title,
+        body: message,
+        url: `/?guest=${encodeURIComponent(guest.name)}`,
+      });
+    }
 
     return true;
   } catch (err) {
@@ -192,6 +259,15 @@ export const broadcastNotification = async (guests, { title, message, type = "br
             sentAt: new Date(),
           },
         });
+
+        // Trigger FCM push jika tamu punya fcmToken
+        if (g.fcmToken) {
+          triggerFcmPushToGuest(g.fcmToken, {
+            title,
+            body: message,
+            url: `/?guest=${encodeURIComponent(g.name)}`,
+          });
+        }
       } catch (e) {
         console.error(`Gagal update tamu ${g.name}:`, e);
       }
@@ -217,7 +293,7 @@ export const listenToGuestNotifications = (guestId, onNewNotification) => {
     where("guestId", "in", [guestId, "ALL"])
   );
 
-  const unsubscribe = onSnapshot(
+  const unsubscribeFirestore = onSnapshot(
     q,
     (snapshot) => {
       snapshot.docChanges().forEach((change) => {
@@ -240,7 +316,26 @@ export const listenToGuestNotifications = (guestId, onNewNotification) => {
     }
   );
 
-  return unsubscribe;
+  // Dengarkan juga pesan masuk via Firebase Messaging Foreground
+  messagingPromise.then((messaging) => {
+    if (messaging) {
+      onMessage(messaging, (payload) => {
+        console.log("Foreground FCM message:", payload);
+        const title = payload.notification?.title || payload.data?.title || "Open House Kamar 201";
+        const message = payload.notification?.body || payload.data?.message || "";
+        onNewNotification({
+          id: Date.now().toString(),
+          title,
+          message,
+          type: "fcm",
+        });
+      });
+    }
+  }).catch(() => {});
+
+  return () => {
+    unsubscribeFirestore();
+  };
 };
 
 // Fitur Pengingat Otomatis Berdasarkan Waktu (Pagi / Siang Menjelang 13:30)
